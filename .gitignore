@@ -1,0 +1,15 @@
+# Node
+**/node_modules/
+**/dist/
+**/out/
+
+# Next.js
+**/.next/
+.vercel/
+
+# Env
+.env*
+
+# OS / misc
+.DS_Store
+Thumbs.db
