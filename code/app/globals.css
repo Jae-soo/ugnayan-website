@@ -144,15 +144,6 @@
 
 
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
-
 /* Ensure dialogs overlay above Leaflet map */
 .leaflet-container,
 .leaflet-pane,
