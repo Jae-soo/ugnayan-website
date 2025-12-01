@@ -187,9 +187,6 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
   }
 
   const loadAnnouncements = async (): Promise<void> => {
-    const deletedIdsRaw = localStorage.getItem('deleted_barangay_announcements')
-    const deletedIds: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) as string[] : []
-
     let remoteAnns: Announcement[] = []
     try {
       const res = await fetch('/api/announcements')
@@ -213,7 +210,7 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
 
     const mergedMap = new Map<string, Announcement>()
     for (const a of [...localAnns, ...remoteAnns]) mergedMap.set(a.id, a)
-    const merged = Array.from(mergedMap.values()).filter(a => !deletedIds.includes(a.id))
+    const merged = Array.from(mergedMap.values())
     setAnnouncements(merged)
   }
 
@@ -342,14 +339,9 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
     const updated = arr.filter(a => a.id !== announcementId)
     localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-    const deletedIdsRaw = localStorage.getItem('deleted_barangay_announcements')
-    const deletedIds: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) as string[] : []
-    if (!deletedIds.includes(announcementId)) {
-      deletedIds.push(announcementId)
-      localStorage.setItem('deleted_barangay_announcements', JSON.stringify(deletedIds))
-    }
     setAnnouncements(updated)
     toast.success('Announcement deleted permanently!')
+    await loadAnnouncements()
   }
 
   const exportData = (type: string): void => {
