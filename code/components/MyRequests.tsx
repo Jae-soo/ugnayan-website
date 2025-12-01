@@ -52,30 +52,76 @@ export default function MyRequests(): React.JSX.Element {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [hasSearched, setHasSearched] = useState<boolean>(false)
 
-  const handleSearch = (): void => {
+  type ApiServiceRequest = {
+    _id: string
+    residentName: string
+    residentEmail: string
+    residentPhone: string
+    residentAddress?: string
+    documentType?: string
+    type?: string
+    purpose?: string
+    additionalInfo?: string
+    status: ServiceRequest['status']
+    createdAt: string
+  }
+
+  type ApiReport = {
+    _id: string
+    reporterName: string
+    reporterEmail: string
+    reporterPhone?: string
+    location?: string
+    category: Report['reportType']
+    priority: Report['priority']
+    description: string
+    status: Report['status'] | 'open'
+    createdAt: string
+  }
+
+  const handleSearch = async (): Promise<void> => {
     if (!searchEmail) {
       return
     }
 
-    // Load from localStorage
-    const storedServiceRequests = localStorage.getItem('serviceRequests')
-    const storedReports = localStorage.getItem('reports')
-    const storedFeedbacks = localStorage.getItem('feedback')
-
-    // Filter by email
-    if (storedServiceRequests) {
-      const allRequests = JSON.parse(storedServiceRequests) as ServiceRequest[]
-      setServiceRequests(allRequests.filter((req: ServiceRequest) => req.email === searchEmail))
-    }
-
-    if (storedReports) {
-      const allReports = JSON.parse(storedReports) as Report[]
-      setReports(allReports.filter((rep: Report) => rep.email === searchEmail))
-    }
-
-    if (storedFeedbacks) {
-      const allFeedbacks = JSON.parse(storedFeedbacks) as Feedback[]
-      setFeedbacks(allFeedbacks.filter((fb: Feedback) => fb.email === searchEmail))
+    try {
+      const [reqRes, repRes] = await Promise.all([
+        fetch(`/api/service-request?email=${encodeURIComponent(searchEmail)}`),
+        fetch(`/api/reports?email=${encodeURIComponent(searchEmail)}`)
+      ])
+      const reqJson = await reqRes.json()
+      const repJson = await repRes.json()
+      const mappedRequests: ServiceRequest[] = ((reqJson.requests || []) as ApiServiceRequest[]).map((r) => ({
+        id: r._id,
+        fullName: r.residentName,
+        email: r.residentEmail,
+        phone: r.residentPhone,
+        address: r.residentAddress || '',
+        documentType: r.documentType || r.type || '',
+        purpose: r.purpose || '',
+        additionalInfo: r.additionalInfo || '',
+        status: r.status,
+        submittedAt: r.createdAt
+      }))
+      const mappedReports: Report[] = ((repJson.reports || []) as ApiReport[]).map((r) => ({
+        id: r._id,
+        fullName: r.reporterName,
+        email: r.reporterEmail,
+        phone: r.reporterPhone || '',
+        location: r.location || '',
+        reportType: r.category,
+        priority: r.priority,
+        description: r.description,
+        status: r.status === 'open' ? 'pending' : r.status,
+        submittedAt: r.createdAt
+      }))
+      setServiceRequests(mappedRequests)
+      setReports(mappedReports)
+      setFeedbacks([])
+    } catch {
+      setServiceRequests([])
+      setReports([])
+      setFeedbacks([])
     }
 
     setHasSearched(true)

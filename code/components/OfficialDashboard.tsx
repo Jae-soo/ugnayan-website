@@ -51,14 +51,7 @@ import {
   Paperclip
 } from 'lucide-react'
 import type { ServiceRequest, Report, Reply } from '@/lib/types'
-import { 
-  getServiceRequests, 
-  updateServiceRequestStatus, 
-  getReports, 
-  updateReportStatus, 
-  saveReply, 
-  getRepliesForReference
-} from '@/lib/storage'
+import { saveReply, getRepliesForReference } from '@/lib/storage'
 import { toast } from 'sonner'
 
 interface OfficialDashboardProps {
@@ -87,6 +80,33 @@ interface UserData {
   address: string
   registeredAt: string
   status: 'active' | 'inactive'
+}
+
+type ApiServiceRequest = {
+  _id: string
+  residentName: string
+  residentEmail: string
+  residentPhone: string
+  residentAddress?: string
+  documentType?: string
+  type?: string
+  purpose?: string
+  status: ServiceRequest['status']
+  createdAt: string
+  additionalInfo?: string
+}
+
+type ApiReport = {
+  _id: string
+  category: Report['reportType']
+  priority: Report['priority']
+  reporterName: string
+  reporterEmail: string
+  reporterPhone?: string
+  location?: string
+  description: string
+  status: Report['status'] | 'open'
+  createdAt: string
 }
 
 export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDashboardProps): React.JSX.Element {
@@ -133,22 +153,53 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
     loadAnnouncements()
   }, [])
 
-  const loadData = (): void => {
-    const requests = getServiceRequests()
-    const allReports = getReports()
-
-    setServiceRequests(requests)
-    setReports(allReports)
-
-    setStats({
-      totalServiceRequests: requests.length,
-      totalReports: allReports.length,
-      pendingServiceRequests: requests.filter((r) => r.status === 'pending').length,
-      urgentReports: allReports.filter((r) => r.priority === 'high').length,
-      resolvedReports: allReports.filter((r) => r.status === 'resolved').length,
-      totalUsers: 0,
-      activeUsers: 0
-    })
+  const loadData = async (): Promise<void> => {
+    try {
+      const [reqRes, repRes] = await Promise.all([
+        fetch('/api/service-request'),
+        fetch('/api/reports')
+      ])
+      const reqJson = await reqRes.json()
+      const repJson = await repRes.json()
+      const requests: ServiceRequest[] = ((reqJson.requests || []) as ApiServiceRequest[]).map((r) => ({
+        referenceId: r._id,
+        fullName: r.residentName,
+        email: r.residentEmail,
+        phone: r.residentPhone,
+        address: r.residentAddress || '',
+        documentType: r.documentType || r.type || '',
+        purpose: r.purpose || '',
+        status: r.status,
+        submittedAt: r.createdAt,
+        additionalInfo: r.additionalInfo || ''
+      }))
+      const allReports: Report[] = ((repJson.reports || []) as ApiReport[]).map((r) => ({
+        referenceId: r._id,
+        reportType: r.category,
+        priority: r.priority,
+        fullName: r.reporterName,
+        email: r.reporterEmail,
+        phone: r.reporterPhone || '',
+        location: r.location || '',
+        description: r.description,
+        status: r.status === 'open' ? 'pending' : r.status,
+        submittedAt: r.createdAt
+      }))
+      setServiceRequests(requests)
+      setReports(allReports)
+      setStats({
+        totalServiceRequests: requests.length,
+        totalReports: allReports.length,
+        pendingServiceRequests: requests.filter((r) => r.status === 'pending').length,
+        urgentReports: allReports.filter((r) => r.priority === 'high').length,
+        resolvedReports: allReports.filter((r) => r.status === 'resolved').length,
+        totalUsers: 0,
+        activeUsers: 0
+      })
+    } catch {
+      setServiceRequests([])
+      setReports([])
+    }
   }
 
   const loadUsers = (): void => {
@@ -177,33 +228,37 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
     }
   }
 
-  const handleUpdateRequestStatus = (referenceId: string, newStatus: string): void => {
-    updateServiceRequestStatus(referenceId, newStatus)
-    loadData()
+  const handleUpdateRequestStatus = async (referenceId: string, newStatus: string): Promise<void> => {
+    await fetch('/api/service-request', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: referenceId, status: newStatus })
+    })
+    await loadData()
     toast.success(`Request ${referenceId} updated to ${newStatus}`)
   }
 
   
 
-  const handleUpdateReportStatus = (referenceId: string, newStatus: string): void => {
-    updateReportStatus(referenceId, newStatus)
-    loadData()
+  const handleUpdateReportStatus = async (referenceId: string, newStatus: string): Promise<void> => {
+    await fetch('/api/reports', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: referenceId, status: newStatus })
+    })
+    await loadData()
     toast.success(`Report ${referenceId} updated to ${newStatus}`)
   }
 
-  const handleDeleteServiceRequest = (referenceId: string): void => {
-    const requests = getServiceRequests()
-    const updated = requests.filter((r) => r.referenceId !== referenceId)
-    localStorage.setItem('barangay_service_requests', JSON.stringify(updated))
-    loadData()
+  const handleDeleteServiceRequest = async (referenceId: string): Promise<void> => {
+    await fetch(`/api/service-request?id=${referenceId}`, { method: 'DELETE' })
+    await loadData()
     toast.success(`Service request ${referenceId} deleted`)
   }
 
-  const handleDeleteReport = (referenceId: string): void => {
-    const allReports = getReports()
-    const updated = allReports.filter((r) => r.referenceId !== referenceId)
-    localStorage.setItem('barangay_reports', JSON.stringify(updated))
-    loadData()
+  const handleDeleteReport = async (referenceId: string): Promise<void> => {
+    await fetch(`/api/reports?id=${referenceId}`, { method: 'DELETE' })
+    await loadData()
     toast.success(`Report ${referenceId} deleted`)
   }
 
