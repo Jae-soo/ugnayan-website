@@ -215,15 +215,22 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
     }
   }
 
-  const loadAnnouncements = (): void => {
-    const storedAnnouncements = localStorage.getItem('barangay_announcements')
-    const deletedIdsRaw = localStorage.getItem('deleted_barangay_announcements')
-    const deletedIds: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) as string[] : []
-    if (storedAnnouncements) {
-      const anns = JSON.parse(storedAnnouncements) as Announcement[]
-      const filtered = anns.filter((a) => !deletedIds.includes(a.id))
-      setAnnouncements(filtered)
-    } else {
+  const loadAnnouncements = async (): Promise<void> => {
+    try {
+      const res = await fetch('/api/announcements')
+      if (!res.ok) { setAnnouncements([]); return }
+      const data = await res.json()
+      const anns: Announcement[] = (data.announcements || []).map((a: any) => ({
+        id: a.id || a._id,
+        title: a.title,
+        content: a.content,
+        category: a.category,
+        priority: a.priority,
+        eventDate: a.eventDate,
+        postedAt: a.postedAt || a.createdAt
+      }))
+      setAnnouncements(anns)
+    } catch {
       setAnnouncements([])
     }
   }
@@ -264,34 +271,28 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
 
   
 
-  const handleDeleteAnnouncement = (id: string): void => {
-    const updated = announcements.filter((a) => a.id !== id)
-    localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-    const deletedIdsRaw = localStorage.getItem('deleted_barangay_announcements')
-    const deletedIds: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) as string[] : []
-    if (!deletedIds.includes(id)) {
-      deletedIds.push(id)
-      localStorage.setItem('deleted_barangay_announcements', JSON.stringify(deletedIds))
-    }
-    setAnnouncements(updated)
-    toast.success('Announcement deleted permanently')
+  const handleDeleteAnnouncement = async (id: string): Promise<void> => {
+    await fetch(`/api/announcements?id=${id}`, { method: 'DELETE' })
+    await loadAnnouncements()
+    toast.success('Announcement deleted')
   }
 
-  const handleCreateAnnouncement = (): void => {
+  const handleCreateAnnouncement = async (): Promise<void> => {
     if (!newAnnouncement.title || !newAnnouncement.content) {
       toast.error('Please fill in all fields')
       return
     }
 
-    const announcement: Announcement = {
-      id: `ANN-${Date.now()}`,
-      ...newAnnouncement,
-      postedAt: new Date().toISOString()
+    const body = {
+      adminId: '000000000000000000000000',
+      category: newAnnouncement.category,
+      priority: newAnnouncement.priority,
+      title: newAnnouncement.title,
+      content: newAnnouncement.content,
+      eventDate: undefined
     }
-
-    const updated = [...announcements, announcement]
-    localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-    setAnnouncements(updated)
+    await fetch('/api/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    await loadAnnouncements()
     
     setNewAnnouncement({
       title: '',
@@ -300,7 +301,7 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
       priority: 'medium'
     })
     setShowAnnouncementDialog(false)
-    toast.success('Announcement created successfully!')
+      toast.success('Announcement created successfully!')
   }
 
   const handleOpenReply = (referenceId: string, type: 'service-request' | 'report', recipient: { email: string; phone: string; name: string }): void => {
@@ -338,17 +339,17 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
 
       saveReply(reply)
 
-      // Send email notification
-      const emailResponse = await fetch('/api/send-email', {
+      // Send email/SMS via unified route
+      const emailResponse = await fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: replyRecipient.email,
+          channels: 'email',
+          toEmail: replyRecipient.email,
           subject: `Re: ${replyType === 'service-request' ? 'Service Request' : 'Report'} ${replyReferenceId}`,
           message: replyMessage,
           referenceId: replyReferenceId,
-          type: replyType,
-          attachments: replyFiles
+          type: replyType
         })
       })
 
@@ -358,11 +359,12 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
 
       // Send SMS notification if phone number is provided
       if (replyRecipient.phone) {
-        const smsResponse = await fetch('/api/send-sms', {
+        const smsResponse = await fetch('/api/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: replyRecipient.phone,
+            channels: 'sms',
+            toPhone: replyRecipient.phone,
             message: replyMessage,
             referenceId: replyReferenceId,
             type: replyType
