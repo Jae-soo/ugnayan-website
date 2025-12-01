@@ -187,20 +187,39 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
   }
 
   const loadAnnouncements = async (): Promise<void> => {
+    try { localStorage.removeItem('barangay_announcements') } catch {}
     let remoteAnns: Announcement[] = []
+    const normalize = (arr: unknown[]): Announcement[] => {
+      const items = Array.isArray(arr) ? arr : []
+      return items.map((a: unknown) => {
+        const obj = a as { id?: string; _id?: string; title?: string; content?: string; category?: Announcement['category']; priority?: Announcement['priority']; eventDate?: string; postedAt?: string; createdAt?: string }
+        return ({
+          id: (obj.id || obj._id || `${Date.now()}`),
+          title: obj.title || '',
+          content: obj.content || '',
+          category: obj.category || 'general',
+          priority: obj.priority || 'medium',
+          eventDate: obj.eventDate,
+          postedAt: (obj.postedAt || obj.createdAt || new Date().toISOString())
+        })
+      })
+    }
+
     try {
-      const res = await fetch('/api/announcements')
+      let res = await fetch('/api/announcements')
+      if (!res.ok) {
+        res = await fetch('/api/announcement')
+      }
       if (res.ok) {
         const data = await res.json()
-        remoteAnns = (data.announcements || []).map((a: { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }) => ({
-          id: a.id || (a._id as string),
-          title: a.title,
-          content: a.content,
-          category: a.category,
-          priority: a.priority,
-          eventDate: a.eventDate,
-          postedAt: (a.postedAt || a.createdAt) as string
-        }))
+        const arr = Array.isArray(data)
+          ? data
+          : Array.isArray(data.announcements)
+            ? data.announcements
+            : Array.isArray(data.data)
+              ? data.data
+              : []
+        remoteAnns = normalize(arr)
         localStorage.setItem('barangay_announcements', JSON.stringify(remoteAnns))
       }
     } catch {}
@@ -458,6 +477,7 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
             <Button
               variant="secondary"
               onClick={() => {
+                try { localStorage.removeItem('barangay_announcements') } catch {}
                 loadData()
                 loadUsers()
                 loadAnnouncements()
