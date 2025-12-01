@@ -281,6 +281,7 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
 
         toast.success('Announcement created successfully!')
         setAnnouncements(updated)
+        await loadAnnouncements()
       } else {
         // Fallback to local-only creation
         const announcement: Announcement = {
@@ -298,6 +299,7 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
         localStorage.setItem('barangay_announcements', JSON.stringify(updated))
         toast.success('Announcement created locally (offline mode)')
         setAnnouncements(updated)
+        await loadAnnouncements()
       }
     } catch {
       const announcement: Announcement = {
@@ -315,6 +317,7 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
       localStorage.setItem('barangay_announcements', JSON.stringify(updated))
       toast.success('Announcement created locally (offline mode)')
       setAnnouncements(updated)
+      await loadAnnouncements()
     }
     setNewAnnouncement({
       title: '',
