@@ -190,36 +190,31 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     const deletedIdsRaw = localStorage.getItem('deleted_barangay_announcements')
     const deletedIds: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) as string[] : []
 
+    let remoteAnns: Announcement[] = []
     try {
       const res = await fetch('/api/announcements')
       if (res.ok) {
         const data = await res.json()
-        const anns: Announcement[] = (data.announcements || []).map((a: { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }) => ({
-          id: a.id || a._id as string,
+        remoteAnns = (data.announcements || []).map((a: { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }) => ({
+          id: a.id || (a._id as string),
           title: a.title,
           content: a.content,
           category: a.category,
           priority: a.priority,
           eventDate: a.eventDate,
-          postedAt: a.postedAt || a.createdAt as string
+          postedAt: (a.postedAt || a.createdAt) as string
         }))
-        const filtered = anns.filter(a => !deletedIds.includes(a.id))
-        setAnnouncements(filtered)
-
-        // Sync to local for offline viewing
-        localStorage.setItem('barangay_announcements', JSON.stringify(anns))
-        return
+        localStorage.setItem('barangay_announcements', JSON.stringify(remoteAnns))
       }
     } catch {}
 
     const stored = localStorage.getItem('barangay_announcements')
-    if (stored) {
-      const anns = JSON.parse(stored) as Announcement[]
-      const filtered = anns.filter(a => !deletedIds.includes(a.id))
-      setAnnouncements(filtered)
-    } else {
-      setAnnouncements([])
-    }
+    const localAnns: Announcement[] = stored ? JSON.parse(stored) as Announcement[] : []
+
+    const mergedMap = new Map<string, Announcement>()
+    for (const a of [...localAnns, ...remoteAnns]) mergedMap.set(a.id, a)
+    const merged = Array.from(mergedMap.values()).filter(a => !deletedIds.includes(a.id))
+    setAnnouncements(merged)
   }
 
   useEffect(() => {
