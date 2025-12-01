@@ -2,9 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import twilio from 'twilio'
 
+type Channels = 'email' | 'sms'
+type NotifyBody = {
+  channels?: Channels | Channels[]
+  toEmail?: string
+  toPhone?: string
+  subject?: string
+  message: string
+  referenceId?: string
+  type?: string
+  attachments?: Array<{ filename: string; contentBase64: string }>
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const body = await request.json()
+    const body: NotifyBody = await request.json()
     const {
       channels, // array like ['email','sms'] or single channel string
       toEmail,
@@ -13,6 +25,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       message,
       referenceId,
       type,
+      attachments
     } = body
 
     if (!message || (!toEmail && !toPhone)) {
@@ -38,7 +51,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           from: 'Barangay Irisan <onboarding@resend.dev>',
           to: [toEmail],
           subject: subject || `Re: ${type || 'Request'} ${referenceId || ''}`.trim(),
-          html: `<div>Reference: ${referenceId || 'N/A'}<br/>Type: ${getTypeLabel(type)}<br/><pre>${escapeHtml(message)}</pre></div>`
+          html: `<div>Reference: ${referenceId || 'N/A'}<br/>Type: ${getTypeLabel(type)}<br/><pre>${escapeHtml(message)}</pre></div>`,
+          attachments: Array.isArray(attachments)
+            ? attachments.map((a) => ({ filename: a.filename, content: a.contentBase64 }))
+            : undefined
         })
         results.email = { sent: !error, id: data?.id ?? null, error: error?.message }
       }

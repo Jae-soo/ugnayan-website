@@ -104,9 +104,59 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
 
   
 
-  const loadData = (): void => {
-    const requests = getServiceRequests()
-    const allReports = getReports()
+  const loadData = async (): Promise<void> => {
+    const localRequests = getServiceRequests()
+    const localReports = getReports()
+    let remoteRequests: ServiceRequest[] = []
+    let remoteReports: Report[] = []
+
+    try {
+      const [reqRes, repRes] = await Promise.all([
+        fetch('/api/service-request'),
+        fetch('/api/reports')
+      ])
+      if (reqRes.ok) {
+        const reqJson = await reqRes.json()
+        const apiRequests = (reqJson.requests || []) as Array<{ _id: string; residentName: string; residentEmail: string; residentPhone: string; residentAddress?: string; documentType?: string; type?: string; purpose?: string; status: ServiceRequest['status']; createdAt: string; additionalInfo?: string }>
+        remoteRequests = apiRequests.map((r) => ({
+          referenceId: r._id,
+          fullName: r.residentName,
+          email: r.residentEmail,
+          phone: r.residentPhone,
+          address: r.residentAddress || '',
+          documentType: r.documentType || r.type || '',
+          purpose: r.purpose || '',
+          status: r.status,
+          submittedAt: r.createdAt,
+          additionalInfo: r.additionalInfo || ''
+        }))
+      }
+      if (repRes.ok) {
+        const repJson = await repRes.json()
+        const apiReports = (repJson.reports || []) as Array<{ _id: string; category: Report['reportType']; priority: Report['priority']; reporterName: string; reporterEmail: string; reporterPhone?: string; location?: string; description: string; status: Report['status'] | 'open'; createdAt: string }>
+        remoteReports = apiReports.map((r) => ({
+          referenceId: r._id,
+          reportType: r.category,
+          priority: r.priority,
+          fullName: r.reporterName,
+          email: r.reporterEmail,
+          phone: r.reporterPhone || '',
+          location: r.location || '',
+          description: r.description,
+          status: r.status === 'open' ? 'pending' : r.status,
+          submittedAt: r.createdAt
+        }))
+      }
+    } catch {}
+
+    const mergeById = <T extends { referenceId: string }>(a: T[], b: T[]): T[] => {
+      const map = new Map<string, T>()
+      for (const item of [...a, ...b]) { map.set(item.referenceId, item) }
+      return Array.from(map.values())
+    }
+
+    const requests = mergeById(localRequests, remoteRequests)
+    const allReports = mergeById(localReports, remoteReports)
 
     setServiceRequests(requests)
     setReports(allReports)
@@ -136,10 +186,33 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     }
   }
 
-  const loadAnnouncements = (): void => {
-    const stored = localStorage.getItem('barangay_announcements')
+  const loadAnnouncements = async (): Promise<void> => {
     const deletedIdsRaw = localStorage.getItem('deleted_barangay_announcements')
     const deletedIds: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) as string[] : []
+
+    try {
+      const res = await fetch('/api/announcements')
+      if (res.ok) {
+        const data = await res.json()
+        const anns: Announcement[] = (data.announcements || []).map((a: { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }) => ({
+          id: a.id || a._id as string,
+          title: a.title,
+          content: a.content,
+          category: a.category,
+          priority: a.priority,
+          eventDate: a.eventDate,
+          postedAt: a.postedAt || a.createdAt as string
+        }))
+        const filtered = anns.filter(a => !deletedIds.includes(a.id))
+        setAnnouncements(filtered)
+
+        // Sync to local for offline viewing
+        localStorage.setItem('barangay_announcements', JSON.stringify(anns))
+        return
+      }
+    } catch {}
+
+    const stored = localStorage.getItem('barangay_announcements')
     if (stored) {
       const anns = JSON.parse(stored) as Announcement[]
       const filtered = anns.filter(a => !deletedIds.includes(a.id))
@@ -176,20 +249,78 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
       return
     }
 
-    const announcement: Announcement = {
-      id: `ANN-${Date.now()}`,
-      title: newAnnouncement.title,
-      content: newAnnouncement.content,
+    const body = {
+      adminId: officialInfo.id || '000000000000000000000000',
       category: newAnnouncement.category,
       priority: newAnnouncement.priority,
-      eventDate: newAnnouncement.eventDate || undefined,
-      postedAt: new Date().toISOString()
+      title: newAnnouncement.title,
+      content: newAnnouncement.content,
+      eventDate: newAnnouncement.eventDate || undefined
     }
-    const existing = localStorage.getItem('barangay_announcements')
-    const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
-    const updated = [announcement, ...arr]
-    localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-    toast.success('Announcement created successfully!')
+
+    try {
+      const res = await fetch('/api/announcements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        const created = data.announcement as { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }
+        const announcement: Announcement = {
+          id: created.id || created._id as string,
+          title: created.title,
+          content: created.content,
+          category: created.category,
+          priority: created.priority,
+          eventDate: created.eventDate,
+          postedAt: created.postedAt || created.createdAt as string
+        }
+
+        // Update local cache for offline viewing
+        const existing = localStorage.getItem('barangay_announcements')
+        const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
+        const updated = [announcement, ...arr]
+        localStorage.setItem('barangay_announcements', JSON.stringify(updated))
+
+        toast.success('Announcement created successfully!')
+        setAnnouncements(updated)
+      } else {
+        // Fallback to local-only creation
+        const announcement: Announcement = {
+          id: `ANN-${Date.now()}`,
+          title: newAnnouncement.title,
+          content: newAnnouncement.content,
+          category: newAnnouncement.category,
+          priority: newAnnouncement.priority,
+          eventDate: newAnnouncement.eventDate || undefined,
+          postedAt: new Date().toISOString()
+        }
+        const existing = localStorage.getItem('barangay_announcements')
+        const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
+        const updated = [announcement, ...arr]
+        localStorage.setItem('barangay_announcements', JSON.stringify(updated))
+        toast.success('Announcement created locally (offline mode)')
+        setAnnouncements(updated)
+      }
+    } catch {
+      const announcement: Announcement = {
+        id: `ANN-${Date.now()}`,
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        category: newAnnouncement.category,
+        priority: newAnnouncement.priority,
+        eventDate: newAnnouncement.eventDate || undefined,
+        postedAt: new Date().toISOString()
+      }
+      const existing = localStorage.getItem('barangay_announcements')
+      const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
+      const updated = [announcement, ...arr]
+      localStorage.setItem('barangay_announcements', JSON.stringify(updated))
+      toast.success('Announcement created locally (offline mode)')
+      setAnnouncements(updated)
+    }
     setNewAnnouncement({
       title: '',
       content: '',
@@ -198,13 +329,17 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
       eventDate: ''
     })
     setShowAnnouncementDialog(false)
-    setAnnouncements(updated)
   }
 
   const handleDeleteAnnouncement = async (announcementId: string): Promise<void> => {
     if (!confirm('Are you sure you want to delete this announcement?')) {
       return
     }
+
+    try {
+      await fetch(`/api/announcements?id=${announcementId}`, { method: 'DELETE' })
+    } catch {}
+
     const existing = localStorage.getItem('barangay_announcements')
     const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
     const updated = arr.filter(a => a.id !== announcementId)

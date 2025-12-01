@@ -51,7 +51,6 @@ import {
   Paperclip
 } from 'lucide-react'
 import type { ServiceRequest, Report, Reply } from '@/lib/types'
-import { saveReply, getRepliesForReference } from '@/lib/storage'
 import { toast } from 'sonner'
 
 interface OfficialDashboardProps {
@@ -220,7 +219,7 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
       const res = await fetch('/api/announcements')
       if (!res.ok) { setAnnouncements([]); return }
       const data = await res.json()
-      const anns: Announcement[] = (data.announcements || []).map((a: any) => ({
+      const anns: Announcement[] = (data.announcements || []).map((a: { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }) => ({
         id: a.id || a._id,
         title: a.title,
         content: a.content,
@@ -337,7 +336,7 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
         attachments: replyFiles.length > 0 ? replyFiles : undefined
       }
 
-      saveReply(reply)
+      // Persist notification to the database after sending
 
       // Send email/SMS via unified route
       const emailResponse = await fetch('/api/notify', {
@@ -349,7 +348,8 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
           subject: `Re: ${replyType === 'service-request' ? 'Service Request' : 'Report'} ${replyReferenceId}`,
           message: replyMessage,
           referenceId: replyReferenceId,
-          type: replyType
+          type: replyType,
+          attachments: replyFiles.map((f) => ({ filename: f.name, contentBase64: (f.dataUrl || '').split(',')[1] || '' }))
         })
       })
 
@@ -375,6 +375,11 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
           reply.smsSent = true
         }
       }
+
+      const existingRaw = localStorage.getItem('barangay_replies')
+      const existing: Reply[] = existingRaw ? JSON.parse(existingRaw) as Reply[] : []
+      const updatedReplies = [reply, ...existing]
+      localStorage.setItem('barangay_replies', JSON.stringify(updatedReplies))
 
       // Show appropriate success message
       if (reply.emailSent && reply.smsSent) {
@@ -411,8 +416,10 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
     }
   }
 
-  const handleViewReplies = (referenceId: string): void => {
-    const replies = getRepliesForReference(referenceId)
+  const handleViewReplies = async (referenceId: string): Promise<void> => {
+    const stored = localStorage.getItem('barangay_replies')
+    const all: Reply[] = stored ? JSON.parse(stored) as Reply[] : []
+    const replies = all.filter(r => r.referenceId === referenceId)
     setRepliesHistory(replies)
     setShowRepliesDialog(true)
   }

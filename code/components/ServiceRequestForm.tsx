@@ -60,7 +60,7 @@ export default function ServiceRequestForm(): React.JSX.Element {
 
       let apiReferenceId: string | undefined
       try {
-        const response = await fetch('/api/service-requests', {
+        const response = await fetch('/api/service-request', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
