@@ -153,10 +153,10 @@ export function useDatabase(): DatabaseState & DatabaseActions {
   ) => {
     try {
       setStatusMessage('Registering...')
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, email, phone, fullName, address }),
+        body: JSON.stringify({ action: 'register', username, password, email, phone, fullName, address }),
       })
 
       const data = await response.json()
@@ -175,10 +175,10 @@ export function useDatabase(): DatabaseState & DatabaseActions {
   const loginUser = useCallback(async (username: string, password: string) => {
     try {
       setStatusMessage('Logging in...')
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ action: 'login', username, password }),
       })
 
       const data = await response.json()
@@ -225,7 +225,7 @@ export function useDatabase(): DatabaseState & DatabaseActions {
 
     try {
       setStatusMessage('Submitting service request...')
-      const response = await fetch('/api/service-requests', {
+      const response = await fetch('/api/service-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -303,7 +303,7 @@ export function useDatabase(): DatabaseState & DatabaseActions {
 
   const fetchServiceRequests = useCallback(async (userId?: string) => {
     try {
-      const url = userId ? `/api/service-requests?userId=${userId}` : '/api/service-requests'
+      const url = userId ? `/api/service-request?email=${userId}` : '/api/service-request'
       const response = await fetch(url)
       const data = await response.json()
 
@@ -358,7 +358,7 @@ export function useDatabase(): DatabaseState & DatabaseActions {
 
   const updateServiceRequestStatus = useCallback(async (id: string, status: string) => {
     try {
-      const response = await fetch('/api/service-requests', {
+      const response = await fetch('/api/service-request', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status }),
