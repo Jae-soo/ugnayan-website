@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { saveServiceRequest } from '@/lib/storage'
+import { saveServiceRequest, setSyncMapEntry } from '@/lib/storage'
 import type { ServiceRequest as LocalServiceRequest } from '@/lib/types'
 import { FileText, Send } from 'lucide-react'
 
@@ -57,6 +57,7 @@ export default function ServiceRequestForm(): React.JSX.Element {
         additionalInfo: formData.additionalInfo || undefined,
       }
       saveServiceRequest(localReq)
+      try { window.dispatchEvent(new Event('barangay_service_requests_updated')) } catch {}
 
       let apiReferenceId: string | undefined
       try {
@@ -80,6 +81,9 @@ export default function ServiceRequestForm(): React.JSX.Element {
         if (response.ok) {
           const data = await response.json()
           apiReferenceId = data.request?._id as string | undefined
+          if (apiReferenceId) {
+            try { setSyncMapEntry(referenceId, 'service', apiReferenceId) } catch {}
+          }
         }
       } catch {}
 

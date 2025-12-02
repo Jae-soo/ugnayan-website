@@ -165,30 +165,18 @@ export default function UgnayanApp(): React.JSX.Element {
     setLoginOpen(true)
   }
 
-  // Show welcome page first
-  if (showWelcome && !loggedInOfficial) {
-    return (
-      <>
-        <WelcomePage 
-          onResidentContinue={handleResidentContinue}
-          onOfficialLogin={handleOfficialLoginClick}
-        />
-        <OfficialLogin 
-          open={loginOpen} 
-          onOpenChange={setLoginOpen}
-          onLoginSuccess={handleLoginSuccess}
-        />
-      </>
-    )
-  }
-
-  // If official is logged in, show the admin dashboard
   if (loggedInOfficial) {
     return <OfficialDashboard officialInfo={loggedInOfficial} onLogout={handleLogout} />
   }
 
-  // Otherwise, show the resident dashboard
   return (
+    <>
+      {showWelcome ? (
+        <WelcomePage 
+          onResidentContinue={handleResidentContinue}
+          onOfficialLogin={handleOfficialLoginClick}
+        />
+      ) : (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-green-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg">
@@ -585,13 +573,6 @@ export default function UgnayanApp(): React.JSX.Element {
         </Tabs>
       </main>
 
-      {/* Login Modal */}
-      <OfficialLogin 
-        open={loginOpen} 
-        onOpenChange={setLoginOpen}
-        onLoginSuccess={handleLoginSuccess}
-      />
-
       {/* Chatbot Widget */}
       <ChatbotWidget />
 
@@ -631,5 +612,12 @@ export default function UgnayanApp(): React.JSX.Element {
         </div>
       </footer>
     </div>
+      )}
+      <OfficialLogin 
+        open={loginOpen} 
+        onOpenChange={setLoginOpen}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    </>
   )
 }

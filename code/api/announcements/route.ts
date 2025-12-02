@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAnnouncement, getAllAnnouncements, deleteAnnouncement, configureDatabase } from '@/lib/database';
+import { createAnnouncement, getAllAnnouncements, deleteAnnouncement } from '@/lib/database';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-      return NextResponse.json(
-        { success: false, message: 'Database is not configured. Set MONGODB_URI.' },
-        { status: 500 }
-      );
-    }
-    configureDatabase(uri);
     const body = await request.json();
     const { adminId, category, priority, title, content, eventDate } = body;
 
@@ -46,14 +38,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-      return NextResponse.json(
-        { success: false, message: 'Database is not configured. Set MONGODB_URI.' },
-        { status: 500 }
-      );
-    }
-    configureDatabase(uri);
     const announcements = await getAllAnnouncements();
 
     return NextResponse.json({
@@ -71,14 +55,6 @@ export async function GET(): Promise<NextResponse> {
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-      return NextResponse.json(
-        { success: false, message: 'Database is not configured. Set MONGODB_URI.' },
-        { status: 500 }
-      );
-    }
-    configureDatabase(uri);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

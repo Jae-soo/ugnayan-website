@@ -5,6 +5,7 @@ const DOCUMENTS_KEY = 'barangay_documents';
 const SERVICE_REQUESTS_KEY = 'barangay_service_requests';
 const REPORTS_KEY = 'barangay_reports';
 const REPLIES_KEY = 'barangay_replies';
+const SYNC_MAP_KEY = 'barangay_sync_map';
 
 export const storage = {
   getComplaints: (): Complaint[] => {
@@ -83,6 +84,31 @@ export const updateReportStatus = (referenceId: string, status: string): void =>
     rep.referenceId === referenceId ? { ...rep, status } : rep
   );
   localStorage.setItem(REPORTS_KEY, JSON.stringify(updated));
+};
+
+export const getSyncMap = (): Record<string, { type: 'service' | 'report'; serverId: string }> => {
+  if (typeof window === 'undefined') return {};
+  const data = localStorage.getItem(SYNC_MAP_KEY);
+  return data ? JSON.parse(data) : {};
+};
+
+export const setSyncMapEntry = (referenceId: string, type: 'service' | 'report', serverId: string): void => {
+  if (typeof window === 'undefined') return;
+  const map = getSyncMap();
+  map[referenceId] = { type, serverId };
+  localStorage.setItem(SYNC_MAP_KEY, JSON.stringify(map));
+};
+
+export const getSyncServerId = (referenceId: string): string | undefined => {
+  const map = getSyncMap();
+  return map[referenceId]?.serverId;
+};
+
+export const removeSyncMapEntry = (referenceId: string): void => {
+  if (typeof window === 'undefined') return;
+  const map = getSyncMap();
+  delete map[referenceId];
+  localStorage.setItem(SYNC_MAP_KEY, JSON.stringify(map));
 };
 
 export const getUserServiceRequests = (email: string): ServiceRequest[] => {

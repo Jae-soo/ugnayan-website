@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Search, FileText, AlertTriangle, MessageSquare, Calendar } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
+import { getUserServiceRequests, getUserReports } from '@/lib/storage'
 
 interface ServiceRequest {
   id: string
@@ -91,36 +92,92 @@ export default function MyRequests(): React.JSX.Element {
       ])
       const reqJson = await reqRes.json()
       const repJson = await repRes.json()
-      const mappedRequests: ServiceRequest[] = ((reqJson.requests || []) as ApiServiceRequest[]).map((r) => ({
-        id: r._id,
-        fullName: r.residentName,
-        email: r.residentEmail,
-        phone: r.residentPhone,
-        address: r.residentAddress || '',
-        documentType: r.documentType || r.type || '',
-        purpose: r.purpose || '',
-        additionalInfo: r.additionalInfo || '',
-        status: r.status,
-        submittedAt: r.createdAt
-      }))
-      const mappedReports: Report[] = ((repJson.reports || []) as ApiReport[]).map((r) => ({
-        id: r._id,
-        fullName: r.reporterName,
-        email: r.reporterEmail,
-        phone: r.reporterPhone || '',
-        location: r.location || '',
-        reportType: r.category,
-        priority: r.priority,
-        description: r.description,
-        status: r.status === 'open' ? 'pending' : r.status,
-        submittedAt: r.createdAt
-      }))
-      setServiceRequests(mappedRequests)
-      setReports(mappedReports)
+      if (reqRes.ok) {
+        const mappedRequests: ServiceRequest[] = ((reqJson.requests || []) as ApiServiceRequest[]).map((r) => ({
+          id: r._id,
+          fullName: r.residentName,
+          email: r.residentEmail,
+          phone: r.residentPhone,
+          address: r.residentAddress || '',
+          documentType: r.documentType || r.type || '',
+          purpose: r.purpose || '',
+          additionalInfo: r.additionalInfo || '',
+          status: r.status,
+          submittedAt: r.createdAt
+        }))
+        setServiceRequests(mappedRequests)
+      } else {
+        const locals = getUserServiceRequests(searchEmail).map((r) => ({
+          id: r.referenceId,
+          fullName: r.fullName,
+          email: r.email,
+          phone: r.phone,
+          address: r.address || '',
+          documentType: r.documentType,
+          purpose: r.purpose,
+          additionalInfo: r.additionalInfo || '',
+          status: r.status,
+          submittedAt: r.submittedAt
+        }))
+        setServiceRequests(locals)
+      }
+      if (repRes.ok) {
+        const mappedReports: Report[] = ((repJson.reports || []) as ApiReport[]).map((r) => ({
+          id: r._id,
+          fullName: r.reporterName,
+          email: r.reporterEmail,
+          phone: r.reporterPhone || '',
+          location: r.location || '',
+          reportType: r.category,
+          priority: r.priority,
+          description: r.description,
+          status: r.status === 'open' ? 'pending' : r.status,
+          submittedAt: r.createdAt
+        }))
+        setReports(mappedReports)
+      } else {
+        const locals = getUserReports(searchEmail).map((r) => ({
+          id: r.referenceId,
+          fullName: r.fullName,
+          email: r.email,
+          phone: r.phone || '',
+          location: r.location || '',
+          reportType: r.reportType,
+          priority: r.priority,
+          description: r.description,
+          status: r.status,
+          submittedAt: r.submittedAt
+        }))
+        setReports(locals)
+      }
       setFeedbacks([])
     } catch {
-      setServiceRequests([])
-      setReports([])
+      const localsReq = getUserServiceRequests(searchEmail).map((r) => ({
+        id: r.referenceId,
+        fullName: r.fullName,
+        email: r.email,
+        phone: r.phone,
+        address: r.address || '',
+        documentType: r.documentType,
+        purpose: r.purpose,
+        additionalInfo: r.additionalInfo || '',
+        status: r.status,
+        submittedAt: r.submittedAt
+      }))
+      const localsRep = getUserReports(searchEmail).map((r) => ({
+        id: r.referenceId,
+        fullName: r.fullName,
+        email: r.email,
+        phone: r.phone || '',
+        location: r.location || '',
+        reportType: r.reportType,
+        priority: r.priority,
+        description: r.description,
+        status: r.status,
+        submittedAt: r.submittedAt
+      }))
+      setServiceRequests(localsReq)
+      setReports(localsRep)
       setFeedbacks([])
     }
 

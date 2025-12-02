@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { saveReport } from '@/lib/storage'
+import { saveReport, setSyncMapEntry } from '@/lib/storage'
 import type { Report as LocalReport } from '@/lib/types'
 import { AlertTriangle, Send } from 'lucide-react'
 
@@ -70,6 +70,7 @@ export default function ReportForm(): React.JSX.Element {
         submittedAt: new Date().toISOString(),
       }
       saveReport(localReport)
+      try { window.dispatchEvent(new Event('barangay_reports_updated')) } catch {}
 
       let apiReferenceId: string | undefined
       try {
@@ -92,6 +93,9 @@ export default function ReportForm(): React.JSX.Element {
         if (response.ok) {
           const data = await response.json()
           apiReferenceId = data.report?._id as string | undefined
+          if (apiReferenceId) {
+            try { setSyncMapEntry(referenceId, 'report', apiReferenceId) } catch {}
+          }
         }
       } catch {}
 

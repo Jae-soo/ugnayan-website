@@ -186,51 +186,14 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     }
   }
 
-  const loadAnnouncements = async (): Promise<void> => {
-    try { localStorage.removeItem('barangay_announcements') } catch {}
-    let remoteAnns: Announcement[] = []
-    const normalize = (arr: unknown[]): Announcement[] => {
-      const items = Array.isArray(arr) ? arr : []
-      return items.map((a: unknown) => {
-        const obj = a as { id?: string; _id?: string; title?: string; content?: string; category?: Announcement['category']; priority?: Announcement['priority']; eventDate?: string; postedAt?: string; createdAt?: string }
-        return ({
-          id: (obj.id || obj._id || `${Date.now()}`),
-          title: obj.title || '',
-          content: obj.content || '',
-          category: obj.category || 'general',
-          priority: obj.priority || 'medium',
-          eventDate: obj.eventDate,
-          postedAt: (obj.postedAt || obj.createdAt || new Date().toISOString())
-        })
-      })
-    }
-
+  const loadAnnouncements = (): void => {
     try {
-      let res = await fetch('/api/announcements')
-      if (!res.ok) {
-        res = await fetch('/api/announcement')
-      }
-      if (res.ok) {
-        const data = await res.json()
-        const arr = Array.isArray(data)
-          ? data
-          : Array.isArray(data.announcements)
-            ? data.announcements
-            : Array.isArray(data.data)
-              ? data.data
-              : []
-        remoteAnns = normalize(arr)
-        localStorage.setItem('barangay_announcements', JSON.stringify(remoteAnns))
-      }
-    } catch {}
-
-    const stored = localStorage.getItem('barangay_announcements')
-    const localAnns: Announcement[] = stored ? JSON.parse(stored) as Announcement[] : []
-
-    const mergedMap = new Map<string, Announcement>()
-    for (const a of [...localAnns, ...remoteAnns]) mergedMap.set(a.id, a)
-    const merged = Array.from(mergedMap.values())
-    setAnnouncements(merged)
+      const stored = localStorage.getItem('barangay_announcements')
+      const anns: Announcement[] = stored ? JSON.parse(stored) as Announcement[] : []
+      setAnnouncements(anns)
+    } catch {
+      setAnnouncements([])
+    }
   }
 
   useEffect(() => {
@@ -254,87 +217,29 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     toast.success(`Report ${referenceId} updated to ${newStatus}`)
   }
 
-  const handleCreateAnnouncement = async (): Promise<void> => {
+  const handleCreateAnnouncement = (): Promise<void> | void => {
     if (!newAnnouncement.title || !newAnnouncement.content) {
       toast.error('Please fill in all required fields')
       return
     }
 
-    const body = {
-      adminId: officialInfo.id || '000000000000000000000000',
-      category: newAnnouncement.category,
-      priority: newAnnouncement.priority,
+    const announcement: Announcement = {
+      id: `ANN-${Date.now()}`,
       title: newAnnouncement.title,
       content: newAnnouncement.content,
-      eventDate: newAnnouncement.eventDate || undefined
+      category: newAnnouncement.category,
+      priority: newAnnouncement.priority,
+      eventDate: newAnnouncement.eventDate || undefined,
+      postedAt: new Date().toISOString()
     }
 
-    try {
-      const res = await fetch('/api/announcements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        const created = data.announcement as { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }
-        const announcement: Announcement = {
-          id: created.id || created._id as string,
-          title: created.title,
-          content: created.content,
-          category: created.category,
-          priority: created.priority,
-          eventDate: created.eventDate,
-          postedAt: created.postedAt || created.createdAt as string
-        }
-
-        // Update local cache for offline viewing
-        const existing = localStorage.getItem('barangay_announcements')
-        const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
-        const updated = [announcement, ...arr]
-        localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-
-        toast.success('Announcement created successfully!')
-        setAnnouncements(updated)
-        await loadAnnouncements()
-      } else {
-        // Fallback to local-only creation
-        const announcement: Announcement = {
-          id: `ANN-${Date.now()}`,
-          title: newAnnouncement.title,
-          content: newAnnouncement.content,
-          category: newAnnouncement.category,
-          priority: newAnnouncement.priority,
-          eventDate: newAnnouncement.eventDate || undefined,
-          postedAt: new Date().toISOString()
-        }
-        const existing = localStorage.getItem('barangay_announcements')
-        const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
-        const updated = [announcement, ...arr]
-        localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-        toast.success('Announcement created locally (offline mode)')
-        setAnnouncements(updated)
-        await loadAnnouncements()
-      }
-    } catch {
-      const announcement: Announcement = {
-        id: `ANN-${Date.now()}`,
-        title: newAnnouncement.title,
-        content: newAnnouncement.content,
-        category: newAnnouncement.category,
-        priority: newAnnouncement.priority,
-        eventDate: newAnnouncement.eventDate || undefined,
-        postedAt: new Date().toISOString()
-      }
-      const existing = localStorage.getItem('barangay_announcements')
-      const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
-      const updated = [announcement, ...arr]
-      localStorage.setItem('barangay_announcements', JSON.stringify(updated))
-      toast.success('Announcement created locally (offline mode)')
-      setAnnouncements(updated)
-      await loadAnnouncements()
-    }
+    const existing = localStorage.getItem('barangay_announcements')
+    const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
+    const updated = [announcement, ...arr]
+    localStorage.setItem('barangay_announcements', JSON.stringify(updated))
+    setAnnouncements(updated)
+    try { window.dispatchEvent(new Event('barangay_announcements_updated')) } catch {}
+    toast.success('Announcement created locally!')
     setNewAnnouncement({
       title: '',
       content: '',
@@ -345,22 +250,17 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     setShowAnnouncementDialog(false)
   }
 
-  const handleDeleteAnnouncement = async (announcementId: string): Promise<void> => {
+  const handleDeleteAnnouncement = (announcementId: string): void => {
     if (!confirm('Are you sure you want to delete this announcement?')) {
       return
     }
-
-    try {
-      await fetch(`/api/announcements?id=${announcementId}`, { method: 'DELETE' })
-    } catch {}
-
     const existing = localStorage.getItem('barangay_announcements')
     const arr: Announcement[] = existing ? JSON.parse(existing) as Announcement[] : []
     const updated = arr.filter(a => a.id !== announcementId)
     localStorage.setItem('barangay_announcements', JSON.stringify(updated))
     setAnnouncements(updated)
-    toast.success('Announcement deleted permanently!')
-    await loadAnnouncements()
+    try { window.dispatchEvent(new Event('barangay_announcements_updated')) } catch {}
+    toast.success('Announcement deleted!')
   }
 
   const exportData = (type: string): void => {
@@ -390,6 +290,7 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
     a.href = url
     a.download = filename
     a.click()
+    
     URL.revokeObjectURL(url)
     toast.success(`Exported ${type} data successfully!`)
   }
@@ -477,7 +378,6 @@ export default function AdminDashboard({ officialInfo }: AdminDashboardProps): R
             <Button
               variant="secondary"
               onClick={() => {
-                try { localStorage.removeItem('barangay_announcements') } catch {}
                 loadData()
                 loadUsers()
                 loadAnnouncements()

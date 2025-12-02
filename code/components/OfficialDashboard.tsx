@@ -51,6 +51,7 @@ import {
   Paperclip
 } from 'lucide-react'
 import type { ServiceRequest, Report, Reply } from '@/lib/types'
+import { getServiceRequests as getLocalServiceRequests, getReports as getLocalReports, updateServiceRequestStatus as updateLocalServiceRequestStatus, updateReportStatus as updateLocalReportStatus } from '@/lib/storage'
 import { toast } from 'sonner'
 
 interface OfficialDashboardProps {
@@ -150,40 +151,89 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
     loadData()
     loadUsers()
     loadAnnouncements()
+    const storageHandler = (e: StorageEvent): void => {
+      if (e.key === 'barangay_announcements') loadAnnouncements()
+      if (e.key === 'barangay_service_requests') loadLocalServiceRequests()
+      if (e.key === 'barangay_reports') loadLocalReports()
+    }
+    const customHandler = (): void => {
+      loadAnnouncements()
+    }
+    const reqHandler = (): void => { loadLocalServiceRequests() }
+    const repHandler = (): void => { loadLocalReports() }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', storageHandler)
+      window.addEventListener('barangay_announcements_updated', customHandler as EventListener)
+      window.addEventListener('barangay_service_requests_updated', reqHandler as EventListener)
+      window.addEventListener('barangay_reports_updated', repHandler as EventListener)
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', storageHandler)
+        window.removeEventListener('barangay_announcements_updated', customHandler as EventListener)
+        window.removeEventListener('barangay_service_requests_updated', reqHandler as EventListener)
+        window.removeEventListener('barangay_reports_updated', repHandler as EventListener)
+      }
+    }
   }, [])
 
   const loadData = async (): Promise<void> => {
+    // Instant local view to avoid delay
+    loadLocalServiceRequests()
+    loadLocalReports()
     try {
       const [reqRes, repRes] = await Promise.all([
         fetch('/api/service-request'),
         fetch('/api/reports')
       ])
-      const reqJson = await reqRes.json()
-      const repJson = await repRes.json()
-      const requests: ServiceRequest[] = ((reqJson.requests || []) as ApiServiceRequest[]).map((r) => ({
-        referenceId: r._id,
-        fullName: r.residentName,
-        email: r.residentEmail,
-        phone: r.residentPhone,
-        address: r.residentAddress || '',
-        documentType: r.documentType || r.type || '',
-        purpose: r.purpose || '',
-        status: r.status,
-        submittedAt: r.createdAt,
-        additionalInfo: r.additionalInfo || ''
-      }))
-      const allReports: Report[] = ((repJson.reports || []) as ApiReport[]).map((r) => ({
-        referenceId: r._id,
-        reportType: r.category,
-        priority: r.priority,
-        fullName: r.reporterName,
-        email: r.reporterEmail,
-        phone: r.reporterPhone || '',
-        location: r.location || '',
-        description: r.description,
-        status: r.status === 'open' ? 'pending' : r.status,
-        submittedAt: r.createdAt
-      }))
+      let requests: ServiceRequest[] = []
+      let allReports: Report[] = []
+
+      try {
+        const reqJson = await reqRes.json()
+        if (reqRes.ok && Array.isArray(reqJson.requests)) {
+          requests = (reqJson.requests as ApiServiceRequest[]).map((r) => ({
+            referenceId: r._id,
+            fullName: r.residentName,
+            email: r.residentEmail,
+            phone: r.residentPhone,
+            address: r.residentAddress || '',
+            documentType: r.documentType || r.type || '',
+            purpose: r.purpose || '',
+            status: r.status,
+            submittedAt: r.createdAt,
+            additionalInfo: r.additionalInfo || ''
+          }))
+        }
+      } catch {}
+
+      try {
+        const repJson = await repRes.json()
+        if (repRes.ok && Array.isArray(repJson.reports)) {
+          allReports = (repJson.reports as ApiReport[]).map((r) => ({
+            referenceId: r._id,
+            reportType: r.category,
+            priority: r.priority,
+            fullName: r.reporterName,
+            email: r.reporterEmail,
+            phone: r.reporterPhone || '',
+            location: r.location || '',
+            description: r.description,
+            status: r.status === 'open' ? 'pending' : r.status,
+            submittedAt: r.createdAt
+          }))
+        }
+      } catch {}
+
+      if (requests.length === 0) {
+        const localReqs = getLocalServiceRequests()
+        requests = localReqs as unknown as ServiceRequest[]
+      }
+      if (allReports.length === 0) {
+        const localReps = getLocalReports()
+        allReports = localReps as unknown as Report[]
+      }
+
       setServiceRequests(requests)
       setReports(allReports)
       setStats({
@@ -196,9 +246,41 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
         activeUsers: 0
       })
     } catch {
-      setServiceRequests([])
-      setReports([])
+      const localReqs = getLocalServiceRequests()
+      const localReps = getLocalReports()
+      setServiceRequests(localReqs as unknown as ServiceRequest[])
+      setReports(localReps as unknown as Report[])
+      setStats({
+        totalServiceRequests: localReqs.length,
+        totalReports: localReps.length,
+        pendingServiceRequests: localReqs.filter((r) => r.status === 'pending').length,
+        urgentReports: localReps.filter((r) => r.priority === 'high').length,
+        resolvedReports: localReps.filter((r) => r.status === 'resolved').length,
+        totalUsers: stats.totalUsers,
+        activeUsers: stats.activeUsers
+      })
     }
+  }
+
+  const loadLocalServiceRequests = (): void => {
+    const localReqs = getLocalServiceRequests()
+    setServiceRequests(localReqs as unknown as ServiceRequest[])
+    setStats(prev => ({
+      ...prev,
+      totalServiceRequests: localReqs.length,
+      pendingServiceRequests: localReqs.filter((r) => r.status === 'pending').length
+    }))
+  }
+
+  const loadLocalReports = (): void => {
+    const localReps = getLocalReports()
+    setReports(localReps as unknown as Report[])
+    setStats(prev => ({
+      ...prev,
+      totalReports: localReps.length,
+      urgentReports: localReps.filter((r) => r.priority === 'high').length,
+      resolvedReports: localReps.filter((r) => r.status === 'resolved').length
+    }))
   }
 
   const loadUsers = (): void => {
@@ -214,20 +296,10 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
     }
   }
 
-  const loadAnnouncements = async (): Promise<void> => {
+  const loadAnnouncements = (): void => {
     try {
-      const res = await fetch('/api/announcements')
-      if (!res.ok) { setAnnouncements([]); return }
-      const data = await res.json()
-      const anns: Announcement[] = (data.announcements || []).map((a: { _id?: string; id?: string; title: string; content: string; category: Announcement['category']; priority: Announcement['priority']; eventDate?: string; createdAt?: string; postedAt?: string }) => ({
-        id: a.id || a._id,
-        title: a.title,
-        content: a.content,
-        category: a.category,
-        priority: a.priority,
-        eventDate: a.eventDate,
-        postedAt: a.postedAt || a.createdAt
-      }))
+      const raw = localStorage.getItem('barangay_announcements')
+      const anns: Announcement[] = raw ? JSON.parse(raw) as Announcement[] : []
       setAnnouncements(anns)
     } catch {
       setAnnouncements([])
@@ -235,72 +307,114 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
   }
 
   const handleUpdateRequestStatus = async (referenceId: string, newStatus: string): Promise<void> => {
-    await fetch('/api/service-request', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: referenceId, status: newStatus })
-    })
-    await loadData()
-    toast.success(`Request ${referenceId} updated to ${newStatus}`)
+    try {
+      const res = await fetch('/api/service-request', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: referenceId, status: newStatus })
+      })
+      if (!res.ok) throw new Error('api-failed')
+      await loadData()
+      toast.success(`Request ${referenceId} updated to ${newStatus}`)
+    } catch {
+      updateLocalServiceRequestStatus(referenceId, newStatus)
+      const localReqs = getLocalServiceRequests()
+      setServiceRequests(localReqs as unknown as ServiceRequest[])
+      toast.success(`Request ${referenceId} updated locally to ${newStatus}`)
+    }
   }
 
   
 
   const handleUpdateReportStatus = async (referenceId: string, newStatus: string): Promise<void> => {
-    await fetch('/api/reports', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: referenceId, status: newStatus })
-    })
-    await loadData()
-    toast.success(`Report ${referenceId} updated to ${newStatus}`)
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: referenceId, status: newStatus })
+      })
+      if (!res.ok) throw new Error('api-failed')
+      await loadData()
+      toast.success(`Report ${referenceId} updated to ${newStatus}`)
+    } catch {
+      updateLocalReportStatus(referenceId, newStatus)
+      const localReps = getLocalReports()
+      setReports(localReps as unknown as Report[])
+      toast.success(`Report ${referenceId} updated locally to ${newStatus}`)
+    }
   }
 
-  const handleDeleteServiceRequest = async (referenceId: string): Promise<void> => {
-    await fetch(`/api/service-request?id=${referenceId}`, { method: 'DELETE' })
-    await loadData()
+  const handleDeleteServiceRequest = (referenceId: string): void => {
+    const reqs = getLocalServiceRequests().filter(r => r.referenceId !== referenceId)
+    localStorage.setItem('barangay_service_requests', JSON.stringify(reqs))
+    setServiceRequests(reqs as unknown as ServiceRequest[])
+    setStats(prev => ({
+      ...prev,
+      totalServiceRequests: reqs.length,
+      pendingServiceRequests: reqs.filter((r) => r.status === 'pending').length
+    }))
+    try { window.dispatchEvent(new Event('barangay_service_requests_updated')) } catch {}
     toast.success(`Service request ${referenceId} deleted`)
+    void fetch(`/api/service-request?id=${referenceId}`, { method: 'DELETE' }).catch(() => {})
   }
 
-  const handleDeleteReport = async (referenceId: string): Promise<void> => {
-    await fetch(`/api/reports?id=${referenceId}`, { method: 'DELETE' })
-    await loadData()
+  const handleDeleteReport = (referenceId: string): void => {
+    const reps = getLocalReports().filter(r => r.referenceId !== referenceId)
+    localStorage.setItem('barangay_reports', JSON.stringify(reps))
+    setReports(reps as unknown as Report[])
+    setStats(prev => ({
+      ...prev,
+      totalReports: reps.length,
+      urgentReports: reps.filter((r) => r.priority === 'high').length,
+      resolvedReports: reps.filter((r) => r.status === 'resolved').length
+    }))
+    try { window.dispatchEvent(new Event('barangay_reports_updated')) } catch {}
     toast.success(`Report ${referenceId} deleted`)
+    void fetch(`/api/reports?id=${referenceId}`, { method: 'DELETE' }).catch(() => {})
   }
 
   
 
-  const handleDeleteAnnouncement = async (id: string): Promise<void> => {
-    await fetch(`/api/announcements?id=${id}`, { method: 'DELETE' })
-    await loadAnnouncements()
-    toast.success('Announcement deleted')
+  const handleDeleteAnnouncement = (id: string): void => {
+    try {
+      const raw = localStorage.getItem('barangay_announcements')
+      const anns: Announcement[] = raw ? JSON.parse(raw) as Announcement[] : []
+      const updated = anns.filter(a => a.id !== id)
+      localStorage.setItem('barangay_announcements', JSON.stringify(updated))
+      setAnnouncements(updated)
+      try { window.dispatchEvent(new Event('barangay_announcements_updated')) } catch {}
+      toast.success('Announcement deleted')
+    } catch {
+      toast.error('Failed to delete announcement')
+    }
   }
 
-  const handleCreateAnnouncement = async (): Promise<void> => {
+  const handleCreateAnnouncement = (): void => {
     if (!newAnnouncement.title || !newAnnouncement.content) {
       toast.error('Please fill in all fields')
       return
     }
-
-    const body = {
-      adminId: '000000000000000000000000',
-      category: newAnnouncement.category,
-      priority: newAnnouncement.priority,
+    const ann: Announcement = {
+      id: `ANN-${Date.now()}`,
       title: newAnnouncement.title,
       content: newAnnouncement.content,
-      eventDate: undefined
+      category: newAnnouncement.category,
+      priority: newAnnouncement.priority,
+      postedAt: new Date().toISOString()
     }
-    await fetch('/api/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    await loadAnnouncements()
-    
-    setNewAnnouncement({
-      title: '',
-      content: '',
-      category: 'general',
-      priority: 'medium'
-    })
-    setShowAnnouncementDialog(false)
+    try {
+      const raw = localStorage.getItem('barangay_announcements')
+      const anns: Announcement[] = raw ? JSON.parse(raw) as Announcement[] : []
+      const updated = [ann, ...anns]
+      localStorage.setItem('barangay_announcements', JSON.stringify(updated))
+      setAnnouncements(updated)
+      setNewAnnouncement({ title: '', content: '', category: 'general', priority: 'medium' })
+      setShowAnnouncementDialog(false)
+      try { window.dispatchEvent(new Event('barangay_announcements_updated')) } catch {}
       toast.success('Announcement created successfully!')
+    } catch {
+      toast.error('Failed to create announcement')
+    }
   }
 
   const handleOpenReply = (referenceId: string, type: 'service-request' | 'report', recipient: { email: string; phone: string; name: string }): void => {
@@ -800,17 +914,15 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
                                   >
                                     <History className="h-4 w-4" />
                                   </Button>
-                                  {(request.status === 'completed' || request.status === 'rejected') && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeleteServiceRequest(request.referenceId)}
-                                      title="Delete Request"
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteServiceRequest(request.referenceId)}
+                                    title="Delete Request"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -931,17 +1043,15 @@ export default function OfficialDashboard({ officialInfo, onLogout }: OfficialDa
                                   >
                                     <History className="h-4 w-4" />
                                   </Button>
-                                  {(report.status === 'resolved' || report.status === 'rejected') && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeleteReport(report.referenceId)}
-                                      title="Delete Report"
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteReport(report.referenceId)}
+                                    title="Delete Report"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>

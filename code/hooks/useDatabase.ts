@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { getServiceRequests as getLocalServiceRequests, getReports as getLocalReports, updateServiceRequestStatus as updateLocalServiceRequestStatus, updateReportStatus as updateLocalReportStatus, getSyncServerId, setSyncMapEntry } from '@/lib/storage'
 
 export interface UserProfile {
   id: string
@@ -120,6 +121,28 @@ export function useDatabase(): DatabaseState & DatabaseActions {
     fetchAnnouncements()
   }, [])
 
+  useEffect(() => {
+    const trySync = async (): Promise<void> => {
+      try {
+        const res = await fetch('/api/db/health', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.status !== 'healthy') return
+        await syncLocalData()
+      } catch {}
+    }
+    trySync()
+    const onlineHandler = (): void => { void syncLocalData() }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', onlineHandler)
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', onlineHandler)
+      }
+    }
+  }, [])
+
   const registerUser = useCallback(async (
     username: string,
     password: string,
@@ -223,10 +246,13 @@ export function useDatabase(): DatabaseState & DatabaseActions {
         await fetchServiceRequests(userProfile.id)
       } else {
         setStatusMessage(data.message || 'Failed to submit service request')
+        const local = getLocalServiceRequests().filter(r => !userProfile || !userProfile.id || !('userId' in r) || r.email === email)
+        setServiceRequests(local as unknown as ServiceRequestItem[])
       }
     } catch (error: unknown) {
-      console.error('Service request error:', error)
-      setStatusMessage('Failed to submit service request')
+      const local = getLocalServiceRequests().filter(r => r.email === email)
+      setServiceRequests(local as unknown as ServiceRequestItem[])
+      setStatusMessage('Saved locally')
     }
   }, [userProfile])
 
@@ -283,9 +309,13 @@ export function useDatabase(): DatabaseState & DatabaseActions {
 
       if (data.success) {
         setServiceRequests(data.serviceRequests)
+      } else {
+        const local = getLocalServiceRequests()
+        setServiceRequests(local as unknown as ServiceRequestItem[])
       }
     } catch (error: unknown) {
-      console.error('Fetch service requests error:', error)
+      const local = getLocalServiceRequests()
+      setServiceRequests(local as unknown as ServiceRequestItem[])
     }
   }, [])
 
@@ -297,9 +327,13 @@ export function useDatabase(): DatabaseState & DatabaseActions {
 
       if (data.success) {
         setReports(data.reports)
+      } else {
+        const local = getLocalReports()
+        setReports(local as unknown as ReportItem[])
       }
     } catch (error: unknown) {
-      console.error('Fetch reports error:', error)
+      const local = getLocalReports()
+      setReports(local as unknown as ReportItem[])
     }
   }, [])
 
@@ -310,9 +344,15 @@ export function useDatabase(): DatabaseState & DatabaseActions {
 
       if (data.success) {
         setAnnouncements(data.announcements)
+      } else {
+        const raw = localStorage.getItem('barangay_announcements')
+        const anns = raw ? JSON.parse(raw) : []
+        setAnnouncements(anns)
       }
     } catch (error: unknown) {
-      console.error('Fetch announcements error:', error)
+      const raw = localStorage.getItem('barangay_announcements')
+      const anns = raw ? JSON.parse(raw) : []
+      setAnnouncements(anns)
     }
   }, [])
 
@@ -330,11 +370,16 @@ export function useDatabase(): DatabaseState & DatabaseActions {
         setStatusMessage('Status updated successfully')
         await fetchServiceRequests()
       } else {
-        setStatusMessage(data.message || 'Failed to update status')
+        updateLocalServiceRequestStatus(id, status)
+        const local = getLocalServiceRequests()
+        setServiceRequests(local as unknown as ServiceRequestItem[])
+        setStatusMessage('Updated locally')
       }
     } catch (error: unknown) {
-      console.error('Update status error:', error)
-      setStatusMessage('Failed to update status')
+      updateLocalServiceRequestStatus(id, status)
+      const local = getLocalServiceRequests()
+      setServiceRequests(local as unknown as ServiceRequestItem[])
+      setStatusMessage('Updated locally')
     }
   }, [fetchServiceRequests])
 
@@ -352,13 +397,57 @@ export function useDatabase(): DatabaseState & DatabaseActions {
         setStatusMessage('Status updated successfully')
         await fetchReports()
       } else {
-        setStatusMessage(data.message || 'Failed to update status')
+        updateLocalReportStatus(id, status)
+        const local = getLocalReports()
+        setReports(local as unknown as ReportItem[])
+        setStatusMessage('Updated locally')
       }
     } catch (error: unknown) {
-      console.error('Update status error:', error)
-      setStatusMessage('Failed to update status')
+      updateLocalReportStatus(id, status)
+      const local = getLocalReports()
+      setReports(local as unknown as ReportItem[])
+      setStatusMessage('Updated locally')
     }
   }, [fetchReports])
+
+  const syncLocalData = useCallback(async (): Promise<void> => {
+    try {
+      const localReqs = getLocalServiceRequests()
+      for (const r of localReqs) {
+        const serverId = getSyncServerId(r.referenceId)
+        if (serverId) {
+          try { await fetch('/api/service-request', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: serverId, status: r.status }) }) } catch {}
+          continue
+        }
+        try {
+          const res = await fetch('/api/service-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'service', description: r.additionalInfo || r.purpose, residentName: r.fullName, residentEmail: r.email, residentPhone: r.phone, residentAddress: r.address, documentType: r.documentType, purpose: r.purpose }) })
+          if (res.ok) {
+            const data = await res.json()
+            const createdId = data.request?._id as string | undefined
+            if (createdId) setSyncMapEntry(r.referenceId, 'service', createdId)
+          }
+        } catch {}
+      }
+
+      const localReps = getLocalReports()
+      for (const rep of localReps) {
+        const serverId = getSyncServerId(rep.referenceId)
+        if (serverId) {
+          try { await fetch('/api/reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: serverId, status: rep.status }) }) } catch {}
+          continue
+        }
+        try {
+          const res = await fetch('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: rep.reportType, category: rep.reportType, description: rep.description, location: rep.location, reporterName: rep.fullName, reporterEmail: rep.email, reporterPhone: rep.phone, priority: rep.priority }) })
+          if (res.ok) {
+            const data = await res.json()
+            const createdId = data.report?._id as string | undefined
+            if (createdId) setSyncMapEntry(rep.referenceId, 'report', createdId)
+          }
+        } catch {}
+      }
+      try { window.dispatchEvent(new Event('barangay_data_synced')) } catch {}
+    } catch {}
+  }, [])
 
   return {
     authenticated,
