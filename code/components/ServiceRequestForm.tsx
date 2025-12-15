@@ -33,9 +33,21 @@ export default function ServiceRequestForm(): React.JSX.Element {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Validate form
     if (!formData.fullName || !formData.email || !formData.phone || !formData.documentType || !formData.purpose) {
       toast.error('Please fill in all required fields')
+      setIsSubmitting(false)
+      return
+    }
+
+    const emailOk = /^[A-Za-z0-9._%+-]+@gmail\.com$/i.test(formData.email)
+    if (!emailOk) {
+      toast.error('Please use a valid Gmail address')
+      setIsSubmitting(false)
+      return
+    }
+    const digits = formData.phone.replace(/\D/g, '')
+    if (digits.length !== 11) {
+      toast.error('Phone number must be exactly 11 digits')
       setIsSubmitting(false)
       return
     }

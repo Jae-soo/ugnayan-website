@@ -33,11 +33,25 @@ export default function ReportForm(): React.JSX.Element {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Validate form
     if (!formData.fullName || !formData.email || !formData.reportType || !formData.description) {
       toast.error('Please fill in all required fields')
       setIsSubmitting(false)
       return
+    }
+
+    const emailOk = /^[A-Za-z0-9._%+-]+@gmail\.com$/i.test(formData.email)
+    if (!emailOk) {
+      toast.error('Please use a valid Gmail address')
+      setIsSubmitting(false)
+      return
+    }
+    if (formData.phone) {
+      const digits = formData.phone.replace(/\D/g, '')
+      if (digits.length !== 11) {
+        toast.error('Phone number must be exactly 11 digits')
+        setIsSubmitting(false)
+        return
+      }
     }
 
     try {

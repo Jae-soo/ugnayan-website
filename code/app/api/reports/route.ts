@@ -23,6 +23,16 @@ export async function POST(request: NextRequest) {
     if (!title || !category || !description || !reporterName || !reporterEmail) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    const emailOk = /^[A-Za-z0-9._%+-]+@gmail\.com$/i.test(reporterEmail)
+    if (!emailOk) {
+      return NextResponse.json({ error: 'Email must be a valid Gmail address' }, { status: 400 })
+    }
+    if (reporterPhone) {
+      const digits = String(reporterPhone).replace(/\D/g, '')
+      if (digits.length !== 11) {
+        return NextResponse.json({ error: 'Phone number must be exactly 11 digits' }, { status: 400 })
+      }
+    }
     const report = await createReport({ title, category, description, location, reporterName, reporterEmail, reporterPhone, priority })
     return NextResponse.json({ message: 'Report created successfully', report }, { status: 201 })
   } catch (error) {

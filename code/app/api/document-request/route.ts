@@ -30,6 +30,14 @@ export async function POST(request: NextRequest) {
     if (!residentName || !residentEmail || !residentPhone || !documentType || !purpose) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    const emailOk = /^[A-Za-z0-9._%+-]+@gmail\.com$/i.test(residentEmail)
+    if (!emailOk) {
+      return NextResponse.json({ error: 'Email must be a valid Gmail address' }, { status: 400 })
+    }
+    const digits = String(residentPhone).replace(/\D/g, '')
+    if (digits.length !== 11) {
+      return NextResponse.json({ error: 'Phone number must be exactly 11 digits' }, { status: 400 })
+    }
     const documentRequest = await createDocumentRequest({ residentName, residentEmail, residentPhone, residentAddress, documentType, purpose })
     return NextResponse.json({ message: 'Document request submitted successfully', request: documentRequest }, { status: 201 })
   } catch (error) {
